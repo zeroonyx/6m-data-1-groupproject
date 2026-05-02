@@ -1,12 +1,13 @@
 # Group Project: Job Market Optimization Analysis
-**Team Members:**
+**Team Members:** *in alphabetical order by last name*
  - Li Zhongyi (Ethan)	
  - Lin Minghui (Reeve)	
  - Mao Jianwen (Tony)	
- - Nainar Mohamed	
+ - Nainar Mohamed (Nainar)	
  - Yang Shicong (Shicong)
 
-**Persona:** Persona D — The Job Seeker Optimisation Coach
+**Persona:** 
+ - Persona D — The Job Seeker Optimisation Coach
 
 ## Project Overview
 This project analyzes job posting metadata to provide data-driven insights for job seekers. We focus on timing, title optimization, and identifying low-competition niches in the market.
@@ -18,21 +19,17 @@ This project analyzes job posting metadata to provide data-driven insights for j
 ## Persona D — The Job Seeker Optimisation Coach
 "I help job seekers compete. I want to know: when to apply, what title patterns get the most views, and where applications are most likely to convert."
 
-- Use dt.day_name() and dt.month on metadata_originalPostingDate to find which posting days and months attract the most views and applications.
-- Use str.contains to flag titles with keywords like Senior, Junior, Lead, Specialist, Manager. Compare median views and application counts across these groups.
-- Which primary_category has the lowest applications-per-vacancy ratio (least competitive)? Visualise as a horizontal bar chart.
-
-## Business Questions
+### Business Questions
 1. **When to Apply?** Which days of the week and months of the year do job postings receive the most views and applications?
 2. **Title Optimization?** Do certain keywords in job titles (e.g. Senior, Junior, Lead) correlate with higher views and application counts?        
 3. **Low-Competition Niches?** Which primary job categories have the lowest applications-per-vacancy ratio, indicating less competition?
 
-## Additional Questions to Explore
+### Additional Questions to Explore
 4) **"Hidden Gems"—categories with a high applications-per-vacancy ratio but low total applications, suggesting they are overlooked by job seekers.**
 5) **"Sweet Spot"—categories where the salary is high but the competition (apps-per-vacancy) is relatively low.**
 6) What skill set is required for the job?
 
-## Stretch challenges (if you finish early)
+### Stretch challenges (if you finish early)
  - Salary band width analysis: For each primary_category, compute salary_maximum - salary_minimum using NumPy. Which categories have the widest bands? What might that signal about negotiation room?
 - "Ghost jobs" revisited: Using Pandas date arithmetic (metadata_expiryDate - metadata_originalPostingDate), identify postings open for more than 90 days with zero applications. How prevalent are they? Which categories and levels?
 - Title keyword co-occurrence: Build a frequency table of two-word title bigrams (split title on spaces, then use pd.Series(bigrams).value_counts()). Which bigrams are trending upward over time?
