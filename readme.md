@@ -65,3 +65,16 @@ To prove you stretched your Python muscles, your final notebook must include:
 - [ ] At least one date/time operation using the metadata_originalPostingDate column (dt.month, dt.year, dt.to_period, etc.).
 - [ ] At least two different chart types (e.g. bar + boxplot, histogram + scatter, line + heatmap) — each with a title, axis labels, and a one-sentence interpretation comment below.
 - [ ] A documented data-cleaning step in a Markdown cell: what you removed, why, and how many rows were affected.
+
+## Deployment for Streamlit
+**Create Env**
+
+```bash
+conda env create -f environment.yml
+```
+
+**Activate the environment**
+
+```bash
+conda activate streamlit_app
+```
