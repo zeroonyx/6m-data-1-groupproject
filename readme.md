@@ -36,35 +36,20 @@ This project analyzes job posting metadata to provide data-driven insights for j
 - Cohort analysis: Group jobs by posting quarter. For each cohort, track median salary, median minimumYearsExperience, and application rate. Has the market become more or less demanding over time?
 - Agency concentration index: For each primary_category, compute the share of jobs posted by the top 3 agencies. Build a "concentration index" and rank categories from most agency-dominated to least.
 
-## Data Dictionary
-<details>
-<summary>Click to view full column metadata</summary>
-
-| Column | Type | Notes |
-| :--- | :--- | :--- |
-| **categories** | `str (JSON)` | JSON array of categories. Needs parsing. |
-| **employmentTypes** | `str` | Type of contract (Permanent, Full Time, etc.) |
-| **metadata_originalPostingDate** | `date` | Original date the job was listed. |
-| **metadata_repostCount** | `int` | Signal of hard-to-fill roles. |
-| **metadata_totalNumberOfView** | `int` | Total views received. |
-| **metadata_totalNumberJobApplication** | `int` | Total applications received. |
-| **positionLevels** | `str` | Seniority (Entry, Executive, Manager, etc.) |
-| **salary_minimum / maximum** | `int` | Monthly salary range. |
-| **average_salary** | `float` | Mean of min/max salary. |
-
-*(Table truncated for brevity—paste the full version here)*
-</details>
-
 ## Technical requirements (your notebook must demonstrate ALL of these)
 To prove you stretched your Python muscles, your final notebook must include:
 
-- [ ] At least one NumPy operation applied to a column extracted as an array (e.g. np.mean, np.percentile, np.std, boolean mask, or a normalisation formula).
-- [ ] At least one Pandas groupby with a meaningful aggregation (not just .count()) — e.g. .agg({'col': ['mean', 'median']}).
-- [ ] At least one missing-value handling step — isnull() inspection plus a .fillna(), .dropna(), or .replace() decision that is documented in a Markdown cell.
-- [ ] At least one string/text operation on the title or positionLevels or categories column (.str.contains, .str.extract, .str.upper, etc.).
-- [ ] At least one date/time operation using the metadata_originalPostingDate column (dt.month, dt.year, dt.to_period, etc.).
-- [ ] At least two different chart types (e.g. bar + boxplot, histogram + scatter, line + heatmap) — each with a title, axis labels, and a one-sentence interpretation comment below.
-- [ ] A documented data-cleaning step in a Markdown cell: what you removed, why, and how many rows were affected.
+- [x] At least one NumPy operation applied to a column extracted as an array (e.g. np.mean, np.percentile, np.std, boolean mask, or a normalisation formula).
+- [x] At least one Pandas groupby with a meaningful aggregation (not just .count()) — e.g. .agg({'col': ['mean', 'median']}).
+- [x] At least one missing-value handling step — isnull() inspection plus a .fillna(), .dropna(), or .replace() decision that is documented in a Markdown cell.
+- [x] At least one string/text operation on the title or positionLevels or categories column (.str.contains, .str.extract, .str.upper, etc.).
+- [x] At least one date/time operation using the metadata_originalPostingDate column (dt.month, dt.year, dt.to_period, etc.).
+- [x] At least two different chart types (e.g. bar + boxplot, histogram + scatter, line + heatmap) — each with a title, axis labels, and a one-sentence interpretation comment below.
+- [x] A documented data-cleaning step in a Markdown cell: what you removed, why, and how many rows were affected.
+
+## Process
+- Juypter Notebook is used to perform data profiling and EDA
+- Streamlit is used to present dashboard
 
 ## Deployment for Streamlit
 **Create Env**

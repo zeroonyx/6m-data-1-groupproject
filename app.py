@@ -27,12 +27,21 @@ import pandas as pd
 
 DATA_PATH = "./data/SGJobData_cleaned.csv"
 
-df = pd.read_csv(DATA_PATH)
+
 # Lesson assumption:
 # this dataset has already gone through EDA and basic cleaning.
 # Here we focus on dashboard building, not data cleaning.
 # We still set the datetime dtype explicitly for reliable filtering and charting.
-df["year_month"] = pd.to_datetime(df["year_month"])
+@st.cache_data
+def load_data(path):
+    df = pd.read_csv(path)
+    df["year_month"] = pd.to_datetime(df["year_month"])
+    return df
+
+df = load_data(DATA_PATH)
+
+
+
 
 # big data requires filter
 
@@ -78,7 +87,6 @@ st.dataframe(filtered_df.head(20), width="stretch")
 
 st.header("Key Metrics")
 
-
 # Create four columns for the metrics and unpack them
 # We can then use each column to place a metric
 col1, col2, col3, col4 = st.columns(4)
@@ -88,3 +96,37 @@ col1.metric("Job Posting", f"{len(filtered_df):,}")
 col2.metric("Average Salary", f"${filtered_df['average_salary'].mean():,.0f}")
 col3.metric("Median Average Salary", f"${filtered_df['average_salary'].median():,.0f}")
 col4.metric("Min Average Salary", f"{filtered_df['average_salary'].median():.1f} sqm")
+
+
+# visualization 
+import plotly.express as px
+
+st.header("Visual Analysis")
+
+col_left, col_right = st.columns(2)
+
+# Tells Streamlit to put the following content in the left column
+with col_left:
+    st.subheader("average_salary Price by Position level")
+    avg_price_by_positionlevel = (
+        filtered_df.groupby("positionLevels", as_index=False)["average_salary"]
+        .mean()
+        .sort_values("average_salary", ascending=False)
+        .head(10) # Top 10 towns only for clarity
+    )
+
+    fig_job = px.bar(
+        avg_price_by_positionlevel, 
+        x="positionLevels",    # Changed from "town"
+        y="average_salary",    # Changed from "resale_price"
+        title="Average Salary by Position Level"
+    )
+    st.plotly_chart(fig_job, width="stretch")
+
+# skip Tells Streamlit to put the following content in the right column
+
+
+
+
+from datetime import datetime
+print(f"🟢 Rerun at: {datetime.now()}")
