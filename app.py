@@ -175,11 +175,11 @@ q_min = int(vol_stats.quantile(0.01))
 q_max = int(vol_stats.quantile(0.99))
 
 min_vol, max_vol = st.sidebar.slider(
-    "Filter by Job Volume (IQR)",
+    "Filter by Job Volume",
     min_value=q_min,
     max_value=q_max,
     value=(q_min, q_max),
-    step=1000
+    step=2000
 )
 
 # Raw Rows is big all loaded: 1,024,366 | Columns: 7
