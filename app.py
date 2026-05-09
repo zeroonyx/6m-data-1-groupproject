@@ -179,7 +179,7 @@ min_vol, max_vol = st.sidebar.slider(
     min_value=q_min,
     max_value=q_max,
     value=(q_min, q_max),
-    step=10
+    step=1000
 )
 
 # Raw Rows is big all loaded: 1,024,366 | Columns: 7
