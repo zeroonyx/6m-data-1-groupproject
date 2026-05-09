@@ -1,5 +1,31 @@
 import streamlit as st
 
+# --- 1. CONFIGURATION & CSS (Add at the very top, after imports) ---
+GRAY_BAR = '#999999'    
+RED_ACCENT = '#C85050'  
+CHART_HEIGHT = 380      
+
+st.markdown("""
+    <style>
+    /* Pulls Pro Tip closer to charts */
+    .element-container:has(iframe) { margin-bottom: -35px !important; }
+    
+    /* Pulls Expander closer to Pro Tip */
+    div[data-testid="stExpander"] { margin-top: -15px !important; }
+    
+    /* Clean up the Expander appearance */
+    .streamlit-expanderHeader {
+        background-color: transparent !important;
+        color: #666666 !important;
+    }
+    .streamlit-expanderContent {
+        background-color: #f9f9f9 !important;
+        border-left: 3px solid #999999 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 # section 1
 
 # Sets the page configuration
@@ -90,8 +116,29 @@ def load_data(path):
     df['month_name'] = pd.Categorical(df['month_name'], categories=month_order, ordered=True)
 
     return df
+@st.cache_data
+def get_seniority_base_data(df):
+    """
+    Processes 1M+ rows of text once and caches it.
+    This avoids running regex and explode on every slider movement.
+    """
+    target_keywords = [
+        'senior', 'junior', 'lead', 'manager', 'director', 
+        'intern', 'associate', 'head', 'principal', 'staff',
+        'analyst', 'specialist', 'coordinator', 'executive'
+    ]
+    
+    # Pre-calculate the word-level table
+    df_words = df[['title', 'metadata_totalNumberOfView', 'metadata_totalNumberJobApplication', 'positionLevels', 'average_salary']].copy()
+    df_words['word'] = df_words['title'].str.lower().str.replace(r'[^a-zA-Z\s]', ' ', regex=True).str.split()
+    df_words = df_words.explode('word')
+    
+    # Only keep the keywords we care about for the bubble chart
+    return df_words[df_words['word'].isin(target_keywords)]
 
 df = load_data(DATA_PATH)
+# Call this once after loading your main df
+df_seniority_all = get_seniority_base_data(df)
 
 # big data requires filter
 
@@ -115,6 +162,24 @@ price_range = st.sidebar.slider(
     max_value=max_price,
     value=(min_price, max_price),
     step=500,
+)
+
+# Sidebar Logic for the Bubble Chart Volume
+# We calculate the slider range based on the global seniority data
+st.sidebar.divider()
+st.sidebar.header("Visual Filters (Bubble Chart)")
+
+# Quick aggregation for slider bounds
+vol_stats = df_seniority_all['word'].value_counts()
+q_min = int(vol_stats.quantile(0.01))
+q_max = int(vol_stats.quantile(0.99))
+
+min_vol, max_vol = st.sidebar.slider(
+    "Filter by Job Volume (IQR)",
+    min_value=q_min,
+    max_value=q_max,
+    value=(q_min, q_max),
+    step=10
 )
 
 # Raw Rows is big all loaded: 1,024,366 | Columns: 7
@@ -175,243 +240,380 @@ day_stats = filtered_df.groupby('day_name', observed=True).agg({
 # 2. Calculate Efficiency
 day_stats['Conv %'] = (day_stats['Apps'] / day_stats['Views'] * 100).round(2)
 
-# --- VISUALIZATION ROW 1: Weekly Volume ---
-tab1, tab2 = st.tabs(["🕒 Weekly Trends", "📆 Monthly Trends"])
 
-with tab1:
+# --- VISUALIZATION ROW 1: Weekly Volume v 2 start---
+# --- CONFIGURATION ---
+GRAY_BAR = '#999999'    
+RED_ACCENT = '#C85050'  
+CHART_HEIGHT = 380      
+
+tab3, tab4 = st.tabs(["🕒 Weekly Trends", "📆 Monthly Trends"])
+
+with tab3:
+    # 1. Logic to find the "Sweet Spot" dynamically
+    # Find the absolute peak supply day (e.g., Tue)
+    peak_supply_val = day_stats['Postings'].max()
+    peak_supply_day = day_stats.loc[day_stats['Postings'].idxmax(), 'day_name']
+    
+    # Filter for days that have high supply (within 20% of the peak)
+    high_supply_days = day_stats[day_stats['Postings'] >= (peak_supply_val * 0.8)]
+    
+    # Of those high supply days, find the one with the lowest competition (Apps)
+    sweet_spot_row = high_supply_days.loc[high_supply_days['Apps'].idxmin()]
+    sweet_spot_day = sweet_spot_row['day_name']
+    
+    # Calculate how much lower the competition is compared to the peak app day
+    peak_apps = day_stats['Apps'].max()
+    comp_reduction = round(((peak_apps - sweet_spot_row['Apps']) / peak_apps) * 100)
+
+
     col_a, col_b, col_c = st.columns(3)
     
     with col_a:
-        st.subheader("Weekly Market Volume")
+        st.subheader("Weekly App Volume")
         st.caption("""
             **Market Pulse:** Comparing total interest (Views) against action (Apps). 
             Watch for days where the 'Gap' closes—it signals a surge in active competitors.
         """)
-        # Dual axis equivalent in Plotly: Create a combined bar/line chart
-        fig_day = px.bar(day_stats, x='day_name', y='Apps', color_discrete_sequence=['#3399ff'], 
-                         title="Total Applications by Day")
+        fig_day = px.bar(day_stats, x='day_name', y='Apps', color_discrete_sequence=[GRAY_BAR], opacity=0.8)
         fig_day.add_scatter(x=day_stats['day_name'], y=day_stats['Views'], name='Views', 
-                            yaxis='y2', line=dict(color='#ff4d4d', width=3))
-        fig_day.update_layout(yaxis2=dict(overlaying='y', side='right'), showlegend=False)
+                            yaxis='y2', line=dict(color=RED_ACCENT, width=3))
+        
+        fig_day.update_layout(
+            height=CHART_HEIGHT, margin=dict(l=10, r=10, t=30, b=0),
+            showlegend=False, xaxis_title="", 
+            yaxis=dict(title=dict(text="Apps", font=dict(color=GRAY_BAR)), tickfont=dict(color=GRAY_BAR)),
+            yaxis2=dict(title=dict(text="Views", font=dict(color=RED_ACCENT)), tickfont=dict(color=RED_ACCENT),
+                        overlaying='y', side='right', showgrid=False)
+        )
         st.plotly_chart(fig_day, use_container_width=True)
 
     with col_b:
-        st.subheader("🏗️ Weekly Supply")
+        st.subheader("Weekly Job Supply")
         st.caption("""
             **The Early Bird Advantage:** This tracks when companies drop new roles. 
-            Applying on high-supply days ensures your resume is at the top of the pile 
-            before the 'Market Volume' (left chart) catches up.
+            Applying on high-supply days ensures your resume is at the top of the pile.
         """)
-        # New Postings Chart (Teal Theme)
-        fig_day_supply = px.bar(day_stats, x='day_name', y='Postings', 
-                                color_discrete_sequence=['#008080'],
-                                title="New Job Postings by Day")
+        fig_day_supply = px.bar(day_stats, x='day_name', y='Postings', color_discrete_sequence=[GRAY_BAR])
+        fig_day_supply.update_layout(height=CHART_HEIGHT, margin=dict(l=10, r=10, t=30, b=0),
+                                     xaxis_title="", yaxis_title="Postings")
         st.plotly_chart(fig_day_supply, use_container_width=True)
 
-
     with col_c:
-        st.subheader("Conversion Efficiency (%)")
+        st.subheader("Application Rate (%)")
         st.caption("""
-            **The Decisiveness Score:** This measures the 'App-to-View' ratio. 
-            A higher percentage means users are moving from browsing to applying—identify 
-            these peaks to time your most important applications.
+            **The Decisiveness Score:** Measures 'App-to-View' ratio. Higher % means 
+            users are moving from browsing to applying.
         """)
-        
-        fig_conv = px.line(day_stats, x='day_name', y='Conv %', markers=True,
-                           color_discrete_sequence=['#9b59b6'], title="App-to-View Ratio")
-        
-        # This adds the '%' suffix to the Y-axis and hover labels
-        fig_conv.update_layout(
-            yaxis=dict(
-                ticksuffix="%",
-                range=[0, day_stats['Conv %'].max() * 1.2] # Adds a little headroom
-            ),
-            xaxis_title="Day of Week",
-            yaxis_title="Efficiency (%)"
-        )
-        
+        fig_conv = px.line(day_stats, x='day_name', y='Conv %', markers=True, color_discrete_sequence=[RED_ACCENT])
+        fig_conv.update_layout(height=CHART_HEIGHT, margin=dict(l=10, r=10, t=30, b=0),
+                               yaxis=dict(ticksuffix="%", range=[0, day_stats['Conv %'].max() * 1.3]),
+                               xaxis_title="", yaxis_title="Ratio (%)")
         st.plotly_chart(fig_conv, use_container_width=True)
+        # Final Pro Tip Box
 
-with tab2:
-    # 1. Monthly Aggregation
+    # --- STRATEGIC PRO TIP: WEEKLY ---
+    # st.success(f"**Pro Tip:** Weekly data shows **{best_day}** is the best day to apply.")
+    # 3. Dynamic Pro Tip
+    if sweet_spot_day == peak_supply_day:
+        st.success(f"**Coach's Strategy:** **{sweet_spot_day}** is the clear winner today—it holds the highest supply and the best efficiency.")
+    else:
+        st.success(f"**Coach's Strategy:** While **{peak_supply_day}** has the most postings, **{sweet_spot_day}** is your 'Sweet Spot.' Supply remains high, but you'll face **{comp_reduction}% less competition** for the recruiter's attention.")
+
+with tab4:
+    # Monthly Aggregation (Ensure this runs inside the tab logic)
     month_stats = filtered_df.groupby('month_name', observed=True).agg({
         'metadata_totalNumberOfView': 'sum',
         'metadata_totalNumberJobApplication': 'sum',
         'title': 'count'
-    }).reset_index().rename(columns={
-        'title': 'Postings', 
-        'metadata_totalNumberOfView': 'Views', 
-        'metadata_totalNumberJobApplication': 'Apps'
-    })
-
-    # 2. Calculate Efficiency
+    }).reset_index().rename(columns={'title': 'Postings', 'metadata_totalNumberOfView': 'Views', 'metadata_totalNumberJobApplication': 'Apps'})
     month_stats['Conv %'] = (month_stats['Apps'] / month_stats['Views'] * 100).round(2)
+    # --- LOGIC: COMPUTE MONTHLY DYNAMIC INSIGHTS ---
 
+    # 1. Basic Stats
+    m_peak_supply_val = month_stats['Postings'].max() if not month_stats.empty else 0
+    m_peak_supply_month = month_stats.loc[month_stats['Postings'].idxmax(), 'month_name'] if not month_stats.empty else "N/A"
+    m_peak_apps_val = month_stats['Apps'].max() if not month_stats.empty else 1 # Avoid div by zero
+
+    # 2. Split Year
+    h2_months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    h1_data = month_stats[~month_stats['month_name'].isin(h2_months)]
+    h2_data = month_stats[month_stats['month_name'].isin(h2_months)]
+
+    # Initialize defaults to prevent errors
+    is_second_wind = False
+    m_comp_reduction = 0
+    best_h2_month_name = ""
+
+    # 3. Defensive Calculation
+    if not h1_data.empty and not h2_data.empty:
+        h1_avg_apps = h1_data['Apps'].mean()
+        
+        # Get the specific row for the best month in H2
+        idx_max_h2 = h2_data['Postings'].idxmax()
+        best_h2_month_row = h2_data.loc[idx_max_h2]
+        
+        best_h2_month_name = best_h2_month_row['month_name']
+        
+        # The 'Second Wind' Check
+        # We use .item() or explicit indexing if we suspect multiple rows, 
+        # but usually, month_name is unique.
+        supply_check = best_h2_month_row['Postings'] > (m_peak_supply_val * 0.7)
+        app_check = best_h2_month_row['Apps'] < h1_avg_apps
+        
+        is_second_wind = bool(supply_check and app_check)
+        m_comp_reduction = round(((m_peak_apps_val - best_h2_month_row['Apps']) / m_peak_apps_val) * 100)
+
+    # --- 2. DISPLAY LOGIC (At the bottom of the script) ---
     col_d, col_e, col_f = st.columns(3)
     
     with col_d:
-        st.subheader("Monthly Market Volume")
+        st.markdown("### Monthly App Volume")
         st.caption("""
             **Seasonality Radar:** Spot the big hiring waves. In Singapore, peaks often 
-            align with the 'Post-CNY' shuffle or the mid-year 'Q3 Budget' approvals.
+            align with 'Post-CNY' shuffles or mid-year 'Q3 Budget' approvals—watch for 
+            rising Views to predict coming competition.
         """)
-        # Dual axis Bar + Line
-        fig_month = px.bar(month_stats, x='month_name', y='Apps', 
-                           color_discrete_sequence=['#3399ff'], 
-                           title="Monthly Application Volume")
+        fig_month = px.bar(month_stats, x='month_name', y='Apps', color_discrete_sequence=[GRAY_BAR], opacity=0.8)
+        fig_month.add_scatter(x=month_stats['month_name'], y=month_stats['Views'], name='Views', 
+                              yaxis='y2', line=dict(color=RED_ACCENT, width=3))
         
-        fig_month.add_scatter(x=month_stats['month_name'], y=month_stats['Views'], 
-                              name='Views', yaxis='y2', 
-                              line=dict(color='#ff4d4d', width=3))
-        
-        # fig_month.update_layout(
-        #     yaxis2=dict(overlaying='y', side='right'),
-        #     showlegend=False,
-        #     xaxis_title="Month",
-        #     yaxis_title="Total Applications"
-        # )
-
         fig_month.update_layout(
-            xaxis_title="Month",
-            # Primary Axis (Left)
-            yaxis=dict(
-                title=dict(
-                    text="Total Applications",
-                    font=dict(color="#3399ff") # Nesting font inside title
-                ),
-                tickfont=dict(color="#3399ff"),
-                tickformat=".2s" # Forces 'k' format (e.g., 5.0k)
-            ),
-            # Secondary Axis (Right)
-            yaxis2=dict(
-                title=dict(
-                    text="Total Views",
-                    font=dict(color="#ff4d4d") # Nesting font inside title
-                ),
-                tickfont=dict(color="#ff4d4d"),
-                tickformat=".2s", # Forces 'k' format (e.g., 5.0k)
-                overlaying='y',
-                side='right',
-                anchor="x",
-                showgrid=False
-            ),
-            showlegend=False,
-            height=500,
-            margin=dict(l=20, r=20, t=40, b=20)
+            height=CHART_HEIGHT, margin=dict(l=10, r=10, t=30, b=0),
+            showlegend=False, 
+            # FIX: Force all months to show
+            xaxis=dict(title="", tickmode='linear'), 
+            yaxis=dict(title=dict(text="Apps", font=dict(color=GRAY_BAR)), tickfont=dict(color=GRAY_BAR), tickformat=".2s"),
+            yaxis2=dict(title=dict(text="Views", font=dict(color=RED_ACCENT)), tickfont=dict(color=RED_ACCENT),
+                        tickformat=".2s", overlaying='y', side='right', showgrid=False)
         )
-
         st.plotly_chart(fig_month, use_container_width=True)
 
     with col_e:
-        st.subheader("📦 Monthly Supply")
+        st.markdown("### Monthly Job Supply")
         st.caption("""
-            **Inventory Forecast:** High supply months represent a 'Buyer's Market' for talent. 
-            More choices mean you can be pickier with your applications and expect more 
-            active outreach from recruiters.
+            **Inventory Forecast:** High supply months represent a 'Buyer's Market'. 
+            More choices mean you can be pickier with roles and expect higher response 
+            rates as companies race to fill annual headcounts.
         """)
-        # New Postings Chart (Teal Theme)
-        fig_month_supply = px.bar(month_stats, x='month_name', y='Postings', 
-                                  color_discrete_sequence=['#008080'],
-                                  title="New Job Postings by Month")
+        fig_month_supply = px.bar(month_stats, x='month_name', y='Postings', color_discrete_sequence=[GRAY_BAR])
+        fig_month_supply.update_layout(
+            height=CHART_HEIGHT, margin=dict(l=10, r=10, t=30, b=0),
+            # FIX: Force all months to show
+            xaxis=dict(title="", tickmode='linear'), 
+            yaxis_title="Postings"
+        )
         st.plotly_chart(fig_month_supply, use_container_width=True)
 
-
     with col_f:
-        st.subheader("Seasonal Efficiency (%)")
+        st.markdown("### Application Rate (%)")
         st.caption("""
-            **The Commitment Metric:** This ratio filters out 'curiosity' clicks. 
-            A peak here reveals the months when candidates are most serious about moving—perfect 
-            for benchmarking your own career search intensity.
+            **The Commitment Metric:** This filters out 'curiosity' clicks. High % 
+            months reveal when candidates are most serious about moving—use this to 
+            gauge when the most qualified talent is active.
         """)
-        
-        fig_month_conv = px.line(month_stats, x='month_name', y='Conv %', markers=True,
-                                 color_discrete_sequence=['#f39c12'], 
-                                 title="Monthly App-to-View Ratio")
-        
-        # Apply the % suffix and clean up the layout
+        fig_month_conv = px.line(month_stats, x='month_name', y='Conv %', markers=True, color_discrete_sequence=[RED_ACCENT])
         fig_month_conv.update_layout(
-            yaxis=dict(
-                ticksuffix="%",
-                range=[0, month_stats['Conv %'].max() * 1.2], # Headroom for the peak
-                showgrid=True
-            ),
-            xaxis_title="Month",
-            yaxis_title="Efficiency (%)",
-            margin=dict(l=20, r=20, t=40, b=20)
+            height=CHART_HEIGHT, margin=dict(l=10, r=10, t=30, b=0),
+            # FIX: Force all months to show
+            xaxis=dict(title="", tickmode='linear'), 
+            yaxis=dict(ticksuffix="%", range=[0, month_stats['Conv %'].max() * 1.3], title="Ratio (%)")
         )
-        
         st.plotly_chart(fig_month_conv, use_container_width=True)
-
-    # Marketing Insight for Tab 2
-    peak_month = month_stats.loc[month_stats['Conv %'].idxmax(), 'month_name']
-    st.info(f"💡 **Market Intelligence:** Historical data shows that **{peak_month}** is the most 'decisive' month for your current filters. Plan your big career moves around this window!")
-
-
-# --- INSIGHTS BOX ---
-best_day = day_stats.loc[day_stats['Conv %'].idxmax(), 'day_name']
-st.success(f"**Pro Tip:** Based on current filters, **{best_day}** shows the highest Conversion Efficiency. This is your 'Golden Window' to apply.")
-
-
+    # best_month = month_stats.loc[month_stats['Conv %'].idxmax(), 'month_name']
+    # st.success(f"**Pro Tip:** Seasonality data shows **{best_month}** is the best month to apply.")
+    # # Container for Tips
+    # We use a container to keep the tips grouped
+    with st.container():
+        # 2. Monthly Advice
+        if is_second_wind:
+            st.info(f"""
+                **Seasonal Strategy: The 'Second Wind' Window.** Data shows supply remains strong in **{best_h2_month_row['month_name']}**, 
+                but competition has dropped by **{m_comp_reduction}%** compared to the mid-year peak. This is the best time to 
+                apply for high-leverage roles while other candidates are resting.
+            """)
+        else:
+            st.info(f"**Seasonal Strategy:** Hiring reaches its absolute peak in **{m_peak_supply_month}**. Prepare your portfolio 1 month early to 'Front-Run' the applicant flood.")
+        
+# --- 5. COLLAPSIBLE LOGIC EXPLANATION ---
+with st.expander("How is the 'Sweet Spot' calculated? (The Strategy Logic)"):
+    st.markdown(f"""
+    The **Coach's Strategy** uses a **Competitive Arbitrage** logic to find your best ROI:
+    
+    1. **Identify the Noise Peak:** We find the day with the absolute highest job postings (**{peak_supply_day}**).
+    2. **Filter for Opportunity:** We look for other days where job supply is still at least **80%** of that peak.
+    3. **Find the Path of Least Resistance:** Among those high-supply days, we select the one with the lowest total applications (**{sweet_spot_day}**).
+    4. **Quantify your Edge:** In this case, applying on **{sweet_spot_day}** puts you in front of recruiters with **{comp_reduction}% less competition** than the Tuesday rush.
+    
+    **The Goal:** Don't just apply when there are the most jobs; apply when you have the highest chance of being seen.
+    """)
+# --- VISUALIZATION ROW 1: Weekly Volume v 2 end---
 
 
 # --- Visualization Layout ---
-st.header("📊 Market Deep-Dive")
-col_left, col_right = st.columns(2)
 
+# --- 5. NEW SECTION: SENIORITY MARKET POTENTIAL START---
 
-# Left Column: Existing Position Level Chart
-with col_left:
-    st.subheader("Salary Hierarchy")
-    avg_price_by_positionlevel = (
-        filtered_df.groupby("positionLevels", as_index=False)["average_salary"]
-        .mean()
-        .sort_values("average_salary", ascending=False)
+# --- 5. NEW SECTION: SENIORITY MARKET POTENTIAL ---
+st.header("Position like a Pro")
+st.caption("Analyzing the Job Title of the **Top 10% (90th Percentile)** to identify sweet spots.")
+
+if not df_seniority_all.empty:
+    # 1. FAST FILTERING: Apply current Sidebar filters to the pre-tokenized data
+    snr_mask = (
+        (df_seniority_all['positionLevels'].isin(selected_positionLevels)) & 
+        (df_seniority_all['average_salary'].between(price_range[0], price_range[1]))
     )
+    current_snr_df = df_seniority_all[snr_mask]
 
-    fig_job = px.bar(
-        avg_price_by_positionlevel, 
-        x="positionLevels",
-        y="average_salary",
-        labels={"average_salary": "Avg Salary ($)", "positionLevels": "Level"},
-        color="average_salary",
-        color_continuous_scale="Viridis"
-    )
-    st.plotly_chart(fig_job, use_container_width=True)
-
-# Right Column: New Primary Category Chart
-with col_right:
-    st.subheader("Salary Performance per Category")
-    
-    # 1. Group by Primary Category and calculate stats
-    salary_stats = filtered_df.groupby('primary_category').agg(
-        Avg_Salary=('average_salary', 'mean'),
-        Job_Count=('primary_category', 'count')
+    # 2. AGGREGATION: Calculate stats for the bubbles
+    seniority_stats = current_snr_df.groupby('word').agg(
+        Top_Views=('metadata_totalNumberOfView', lambda x: x.quantile(0.9)),
+        Top_Apps=('metadata_totalNumberJobApplication', lambda x: x.quantile(0.9)),
+        Job_Count=('word', 'count')
     ).reset_index()
 
-    # 2. Filter for categories with at least 50 postings and sort
-    salary_summary = (
-        salary_stats[salary_stats['Job_Count'] > 50]
-        .sort_values('Avg_Salary', ascending=True) # Ascending True for a nice horizontal rank
-    )
+    # 3. RANGE FILTER: Apply the Job Volume slider
+    seniority_stats_filtered = seniority_stats[
+        (seniority_stats['Job_Count'] >= min_vol) & 
+        (seniority_stats['Job_Count'] <= max_vol)
+    ].copy()
 
-    if not salary_summary.empty:
-        fig_cat = px.bar(
-            salary_summary,
-            x='Avg_Salary',
-            y='primary_category',
-            orientation='h', # Horizontal bar for readability
-            title="Top Paying Categories (Min. 50 Postings)",
-            labels={"Avg_Salary": "Average Salary ($)", "primary_category": "Category"},
-            text_auto='.2s' # Automatically adds formatted labels to bars
+    # Prep clean labels
+    seniority_stats_filtered['display_name'] = seniority_stats_filtered['word'].str.upper()
+
+    if not seniority_stats_filtered.empty:
+        # 4. VISUALIZATION: Using px.colors.qualitative.Safe
+        fig_bubble = px.scatter(
+            seniority_stats_filtered,
+            x='Top_Views',
+            y='Top_Apps',
+            size='Job_Count',
+            color='word', 
+            text='display_name', 
+            hover_name='word',
+            size_max=60,
+            labels={
+                'Top_Views': 'Top Tier Views',
+                'Top_Apps': 'Top Tier Apps',
+                'Job_Count': 'Market Volume'
+            },
+            template='plotly_white',
+            color_discrete_sequence=px.colors.qualitative.Safe
+        )
+
+        fig_bubble.update_traces(
+            textposition='top center', 
+            textfont=dict(size=12, weight='bold'),
+            marker=dict(line=dict(width=1, color='DarkSlateGrey'), opacity=0.8)
         )
         
-        # Update layout to make it look cleaner
-        fig_cat.update_layout(yaxis={'categoryorder':'total ascending'}, height=500)
-        st.plotly_chart(fig_cat, use_container_width=True)
-    else:
-        st.info("Not enough data in this range to show Category stats (needs >50 postings).")
+        fig_bubble.update_layout(
+            height=600,
+            showlegend=False,
+            margin=dict(l=20, r=20, t=50, b=20),
+            xaxis=dict(gridcolor='rgba(0,0,0,0.05)', showline=True),
+            yaxis=dict(gridcolor='rgba(0,0,0,0.05)', showline=True)
+        )
 
-# skip Tells Streamlit to put the following content in the right column
+        # Red Dotted Quadrant Lines
+        v_median = seniority_stats_filtered['Top_Views'].median()
+        a_median = seniority_stats_filtered['Top_Apps'].median()
+        
+        fig_bubble.add_hline(y=a_median, line_dash="dot", line_color="red", opacity=0.3)
+        fig_bubble.add_vline(x=v_median, line_dash="dot", line_color="red", opacity=0.3)
+
+        st.plotly_chart(fig_bubble, use_container_width=True)
+
+        # 5. COACH'S INSIGHT
+        with st.container():
+            top_comp_word = seniority_stats_filtered.loc[seniority_stats_filtered['Top_Apps'].idxmax(), 'word'].upper()
+            st.info(f"**Coach's Reading:** Currently, **{top_comp_word}** roles are seeing the most intense competition in this specific volume range.")
+    else:
+        st.warning(f"No seniority keywords match the volume range of {min_vol} to {max_vol}.")
+else:
+    st.error("Seniority data could not be processed. Please check your data source.")
+
+
+# --- 5. NEW SECTION: SENIORITY MARKET POTENTIAL END---
+
+
+# --- 6. NEW SECTION: COMPETITIVE ARBITRAGE START ---
+
+# --- 5. NEW SECTION: SENIORITY MARKET POTENTIAL ---
+st.header("Position like a Pro")
+st.caption("Analyzing the Job Title of the **Top 10% (90th Percentile)** to identify sweet spots.")
+
+# 1. Processing Logic (Pulling from your cached df_seniority_all)
+if not df_seniority_all.empty:
+    # Apply the global sidebar filters (Position Level & Salary) 
+    # but ignore the volume slider
+    snr_mask = (
+        (df_seniority_all['positionLevels'].isin(selected_positionLevels)) & 
+        (df_seniority_all['average_salary'].between(price_range[0], price_range[1]))
+    )
+    current_snr_df = df_seniority_all[snr_mask]
+
+    # Aggregate to get the bubble stats
+    seniority_stats = current_snr_df.groupby('word').agg(
+        Top_Views=('metadata_totalNumberOfView', lambda x: x.quantile(0.9)),
+        Top_Apps=('metadata_totalNumberJobApplication', lambda x: x.quantile(0.9)),
+        Job_Count=('word', 'count')
+    ).reset_index()
+
+    # Uppercase labels for the original clean look
+    seniority_stats['display_name'] = seniority_stats['word'].str.upper()
+
+    if not seniority_stats.empty:
+        # 2. Visualization using the "Safe" colorful theme
+        fig_bubble = px.scatter(
+            seniority_stats,
+            x='Top_Views',
+            y='Top_Apps',
+            size='Job_Count',
+            color='word', 
+            text='display_name', 
+            hover_name='word',
+            size_max=60,
+            labels={
+                'Top_Views': 'Top Tier Views',
+                'Top_Apps': 'Top Tier Apps',
+                'Job_Count': 'Market Volume'
+            },
+            template='plotly_white',
+            color_discrete_sequence=px.colors.qualitative.Safe
+        )
+
+        fig_bubble.update_traces(
+            textposition='top center', 
+            textfont=dict(size=12, weight='bold'),
+            marker=dict(line=dict(width=1, color='DarkSlateGrey'), opacity=0.8)
+        )
+        
+        fig_bubble.update_layout(
+            height=600,
+            showlegend=False,
+            margin=dict(l=20, r=20, t=50, b=20),
+            xaxis=dict(gridcolor='rgba(0,0,0,0.05)', showline=True),
+            yaxis=dict(gridcolor='rgba(0,0,0,0.05)', showline=True)
+        )
+
+        # Original Red Dotted Median Lines
+        v_med = seniority_stats['Top_Views'].median()
+        a_med = seniority_stats['Top_Apps'].median()
+        fig_bubble.add_hline(y=a_med, line_dash="dot", line_color="red", opacity=0.3)
+        fig_bubble.add_vline(x=v_med, line_dash="dot", line_color="red", opacity=0.3)
+
+        st.plotly_chart(fig_bubble, use_container_width=True)
+
+        # 3. Original Dynamic Insight
+        with st.container():
+            top_comp_word = seniority_stats.loc[seniority_stats['Top_Apps'].idxmax(), 'word'].upper()
+            st.info(f"**Coach's Reading:** Currently, **{top_comp_word}** roles represent the most competitive segment in the market.")
+    else:
+        st.warning("No seniority keywords found for the current global filters.")
+
+# --- 6. NEW SECTION: COMPETITIVE ARBITRAGE END ---
 
 st.divider() # Visual break at the bottom of the page
 
